@@ -1,5 +1,3 @@
-# streamlit_app.py
-
 import streamlit as st
 import pandas as pd
 import logging
@@ -12,6 +10,8 @@ from typing import List, Dict, Optional, Tuple, Set
 import geopandas as gpd
 from shapely.geometry import Point
 import folium
+# Import GeoJsonTooltip for hover info on boundaries
+from folium.features import GeoJsonTooltip
 from streamlit_folium import st_folium
 
 # Web/Parsing
@@ -33,7 +33,7 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 log = logging.getLogger(__name__)
 
 # --- Constants from Config ---
-NEWS_SOURCES = config.NEWS_SOURCES # Keep as list of dicts
+NEWS_SOURCES = config.NEWS_SOURCES
 SINGAPORE_LOCATIONS = config.SINGAPORE_LOCATIONS
 ELECTORAL_BOUNDARIES_FILE = config.ELECTORAL_BOUNDARIES_FILE
 CONSTITUENCY_COLUMN_NAME = config.CONSTITUENCY_COLUMN_NAME
@@ -42,7 +42,7 @@ GEOCODER_USER_AGENT = config.GEOCODER_USER_AGENT
 # --- Caching Functions ---
 @st.cache_resource
 def load_boundaries_data(file_path):
-    # ... (Keep this function as is) ...
+    # ... (Keep this function exactly as is) ...
     if not os.path.exists(file_path):
         log.error(f"Electoral boundaries file not found at: {file_path}")
         st.error(f"Error: Boundary file not found at {file_path}. Cannot map constituencies.")
@@ -63,7 +63,7 @@ def load_boundaries_data(file_path):
             gdf = gdf.to_crs(epsg=4326)
         spatial_index = gdf.sindex
         log.info(f"Successfully loaded and indexed {len(gdf)} electoral boundaries.")
-        return gdf, spatial_index
+        return gdf, spatial_index # Return both gdf and index
     except ImportError:
         log.error("Geopandas/Shapely not installed correctly.")
         st.error("Geospatial libraries not found. Please check installation.")
@@ -79,98 +79,66 @@ def get_geocoder_instance():
     log.info("Initializing geocoder...")
     return Nominatim(user_agent=GEOCODER_USER_AGENT)
 
-# Cache data computation
 @st.cache_data(ttl="30m")
-# Function expects the original list of dictionaries config
-def fetch_and_process_news(_news_sources_config: List[Dict]): # Type hint clarifies expectation
-    """Fetches news, filters, geocodes, maps constituency, and groups."""
+def fetch_and_process_news(_news_sources_config: List[Dict]):
+    # ... (Keep this function exactly as is - it uses load_boundaries_data) ...
     log.info("Fetching and processing news data...")
     all_articles = []
     geocoder = get_geocoder_instance()
+    # Make sure boundary data is loaded here for constituency mapping
     boundaries_gdf, boundaries_spatial_index = load_boundaries_data(ELECTORAL_BOUNDARIES_FILE)
 
     # --- 1. Fetch Articles ---
-    # Now _news_sources_config is the list of dicts again
     for source in _news_sources_config:
-        # Accessing keys like source['name'] will work correctly now
         source_name = source['name']
         source_type = source.get('type', 'html').lower()
         source_url = source['url']
         parsed_articles = []
         filtered_out_count = 0
-
         log.info(f"Processing source: {source_name} ({source_type.upper()})")
         if source_type == 'rss':
             try:
                 feed_data = feedparser.parse(source_url)
                 if feed_data.bozo: log.warning(f"Feedparser issue for {source_url}: {feed_data.get('bozo_exception')}")
                 log.info(f"Found {len(feed_data.entries)} total entries. Filtering...")
-
                 for entry in feed_data.entries:
                     title = entry.get('title', '')
                     link = entry.get('link')
                     summary_html = entry.get('summary', entry.get('description', ''))
-
-                    # Keyword Filtering
                     text_to_check = f"{title} {summary_html}"
                     found_keyword = any(re.search(r'(?i)\b' + re.escape(loc) + r'\b', text_to_check) for loc in SINGAPORE_LOCATIONS)
-                    if not found_keyword:
-                        filtered_out_count += 1
-                        continue
-
-                    # Clean Summary
+                    if not found_keyword: filtered_out_count += 1; continue
                     cleaned_summary = ""
                     if summary_html:
                         try:
                             summary_soup = BeautifulSoup(summary_html, 'lxml')
                             cleaned_summary = summary_soup.get_text(strip=True, separator=' ')
-                        except Exception:
-                            cleaned_summary = re.sub('<[^<]+?>', '', summary_html).strip()
-
-                    if title and link:
-                        # Ensure source_name is correctly captured from the dictionary
-                        parsed_articles.append({'title': title.strip(), 'url': link.strip(), 'summary': cleaned_summary, 'source': source_name})
-
+                        except Exception: cleaned_summary = re.sub('<[^<]+?>', '', summary_html).strip()
+                    if title and link: parsed_articles.append({'title': title.strip(), 'url': link.strip(), 'summary': cleaned_summary, 'source': source_name})
                 log.info(f"Kept {len(parsed_articles)} articles from {source_name}, filtered out {filtered_out_count}.")
                 all_articles.extend(parsed_articles)
-
-            except Exception as e:
-                log.error(f"Error parsing RSS feed {source_url}: {e}", exc_info=True)
-                st.warning(f"Could not process RSS feed: {source_name}")
-        else:
-            log.warning(f"Unsupported source type '{source_type}' for {source_name}.")
-
+            except Exception as e: log.error(f"Error parsing RSS feed {source_url}: {e}", exc_info=True); st.warning(f"Could not process RSS feed: {source_name}")
+        else: log.warning(f"Unsupported source type '{source_type}' for {source_name}.")
     log.info(f"Total articles after fetching & initial filtering: {len(all_articles)}")
 
     # --- 2. Process Articles (Geocode, Constituency Map) ---
-    # ... (Keep the rest of the processing logic exactly the same as before) ...
     articles_with_location = []
     geocoding_cache = {}
     for article in all_articles:
         text_to_scan = f"{article['title']} {article['summary']}"
         found_locations = set(loc for loc in SINGAPORE_LOCATIONS if re.search(r'(?i)\b' + re.escape(loc) + r'\b', text_to_scan))
         if not found_locations: continue
-        coords = None
-        primary_location_name = None
+        coords = None; primary_location_name = None
         for loc in found_locations:
             cache_key = loc.lower()
             if cache_key in geocoding_cache: coords_result = geocoding_cache[cache_key]
             else:
                 try:
-                    time.sleep(0.5)
-                    location_data = geocoder.geocode(f"{loc}, Singapore", exactly_one=True, timeout=10)
-                    coords_result = (location_data.latitude, location_data.longitude) if location_data else None
-                    geocoding_cache[cache_key] = coords_result
-                except (GeocoderTimedOut, GeocoderServiceError, Exception) as e:
-                    log.warning(f"Geocoding error for '{loc}': {e}")
-                    coords_result = None
-                    geocoding_cache[cache_key] = None
-            if coords_result:
-                coords = coords_result
-                primary_location_name = loc
-                break
+                    time.sleep(0.5); location_data = geocoder.geocode(f"{loc}, Singapore", exactly_one=True, timeout=10)
+                    coords_result = (location_data.latitude, location_data.longitude) if location_data else None; geocoding_cache[cache_key] = coords_result
+                except (GeocoderTimedOut, GeocoderServiceError, Exception) as e: log.warning(f"Geocoding error for '{loc}': {e}"); coords_result = None; geocoding_cache[cache_key] = None
+            if coords_result: coords = coords_result; primary_location_name = loc; break
         if coords: articles_with_location.append({**article, 'location_name': primary_location_name, 'coords': coords})
-
     log.info(f"Successfully geocoded {len(articles_with_location)} articles.")
 
     # --- 3. Group by Coordinates & Find Constituency ---
@@ -180,7 +148,7 @@ def fetch_and_process_news(_news_sources_config: List[Dict]): # Type hint clarif
         coord_key = f"{lat:.5f},{lon:.5f}"
         if coord_key not in grouped_by_coords:
             constituency = None
-            if boundaries_gdf is not None and boundaries_spatial_index is not None:
+            if boundaries_gdf is not None and boundaries_spatial_index is not None: # Check if boundaries loaded
                 try:
                     point = Point(lon, lat)
                     possible_matches_index = list(boundaries_spatial_index.intersection(point.bounds))
@@ -197,7 +165,6 @@ def fetch_and_process_news(_news_sources_config: List[Dict]): # Type hint clarif
     final_clusters = []
     for data in grouped_by_coords.values():
         final_clusters.append({'latitude': data['latitude'], 'longitude': data['longitude'], 'location_name': data['location_name'], 'constituency': data['constituency'], 'article_count': len(data['articles']), 'articles': data['articles']})
-
     log.info(f"Grouped articles into {len(final_clusters)} coordinate clusters.")
     return final_clusters
 
@@ -206,26 +173,71 @@ def fetch_and_process_news(_news_sources_config: List[Dict]): # Type hint clarif
 
 st.set_page_config(page_title="Singapore News Map", layout="wide")
 st.title("🇸🇬 Singapore News Map")
-st.write("Recent news articles clustered by location.")
+st.write("Recent news articles clustered by location, overlaid on 2020 Electoral Boundaries.")
 
 # --- Load Data ---
-# Pass the original list of dicts directly from config
-clusters = fetch_and_process_news(config.NEWS_SOURCES) # <-- Pass the list directly
+boundaries_gdf, _ = load_boundaries_data(ELECTORAL_BOUNDARIES_FILE)
+clusters = fetch_and_process_news(config.NEWS_SOURCES)
 
 # --- Create and Display Map ---
-# ... (Keep the map display logic exactly the same as before) ...
 map_center = [1.3521, 103.8198]
 map_zoom = 11
+
+# Create base map
+m = folium.Map(location=map_center, zoom_start=map_zoom, tiles="OpenStreetMap")
+
+# --- Add Boundary Layer (MODIFIED with highlight_function) ---
+if boundaries_gdf is not None:
+    log.info("Adding electoral boundary layer to the map...")
+    try:
+        # Define a style function for the default boundary appearance
+        style_function = lambda x: {
+            'fillColor': '#add8e6', # Light blue fill
+            'color': '#00008b',     # Dark blue border
+            'weight': 1.5,          # Border thickness
+            'fillOpacity': 0.2,     # Semi-transparent fill
+        }
+        # --- Define a highlight function for hover effect ---
+        highlight_function = lambda x: {
+            'fillColor': '#add8e6',  # Keep same fill color (or change if desired, e.g., '#87cefa')
+            'color': '#00008b',      # Keep same border color (or change, e.g., 'black')
+            'weight': 3,             # Make border thicker on hover
+            'fillOpacity': 0.5       # Make fill more opaque on hover
+        }
+        # Define tooltip to show constituency name on hover
+        tooltip = GeoJsonTooltip(
+            fields=[CONSTITUENCY_COLUMN_NAME],
+            aliases=['Constituency:'],
+            sticky=True,
+            style=("background-color: white; color: black; font-family: sans-serif; font-size: 12px; padding: 5px;")
+        )
+
+        # Add GeoJson layer to the map, including the highlight_function
+        folium.GeoJson(
+            boundaries_gdf,
+            name='2020 Electoral Boundaries',
+            style_function=style_function,
+            highlight_function=highlight_function, # <-- ADD THIS PARAMETER
+            tooltip=tooltip,
+            show=True
+        ).add_to(m)
+        log.info("Boundary layer added with hover highlighting.")
+    except Exception as e:
+        log.error(f"Error adding boundary layer: {e}", exc_info=True)
+        st.warning("Could not display electoral boundaries on the map.")
+else:
+    st.warning("Boundary data not loaded, cannot display boundary layer.")
+
+
+# --- Add News Cluster Markers (Keep as is) ---
 if clusters is None:
     st.error("Failed to load or process news data. Check logs.")
 elif not clusters:
     st.warning("No relevant news articles found or processed.")
-    m = folium.Map(location=map_center, zoom_start=map_zoom, tiles="OpenStreetMap")
-    st_folium(m, width='100%', height=600)
 else:
-    log.info(f"Creating map with {len(clusters)} clusters...")
-    m = folium.Map(location=map_center, zoom_start=map_zoom, tiles="OpenStreetMap")
+    log.info(f"Adding {len(clusters)} news clusters to the map...")
     for cluster in clusters:
+        # ... (Keep marker creation logic exactly the same) ...
         lat = cluster['latitude']
         lon = cluster['longitude']
         count = cluster['article_count']
@@ -244,9 +256,16 @@ else:
              popup_html += f"<li style='margin-bottom: 5px;'><a href='{article['url']}' target='_blank'>{safe_title}</a><br><small>({article['source']})</small></li>"
         popup_html += "</ul>"
         popup = folium.Popup(popup_html, max_width=350)
-        folium.Marker(location=[lat, lon], tooltip=tooltip_text, popup=popup, icon=folium.Icon(color='blue', icon='info-sign')).add_to(m)
-    log.info("Map created. Rendering...")
-    st_folium(m, width='100%', height=600, returned_objects=[])
-    log.info("Map rendered.")
+        folium.Marker(location=[lat, lon], tooltip=tooltip_text, popup=popup, icon=folium.Icon(color='red', icon='info-sign')).add_to(m)
+    log.info("News cluster markers added.")
+
+# --- Add Layer Control (Keep as is) ---
+if boundaries_gdf is not None:
+    folium.LayerControl().add_to(m)
+
+# --- Display Map (Keep as is) ---
+log.info("Rendering map...")
+st_folium(m, width='100%', height=600, returned_objects=[])
+log.info("Map rendered.")
 
 st.caption("Map data © OpenStreetMap contributors | Boundary data © Elections Department Singapore (via data.gov.sg) | News sourced from Google News RSS")
