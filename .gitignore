@@ -1,0 +1,44 @@
+# --- Jupyter Notebook Files ---
+# Ignore all files ending with .ipynb in any directory
+*.ipynb
+
+# --- Python Virtual Environments ---
+# Common virtual environment folders
+venv/
+env/
+.venv/
+.env/
+
+# --- Python Cache and Compiled Files ---
+__pycache__/
+*.py[cod]
+*$py.class
+
+# --- IDE/Editor Specific Files ---
+.vscode/
+.idea/
+*.swp
+*~
+
+# --- OS Specific Files ---
+.DS_Store
+Thumbs.db
+
+# --- Data Files (Optional - uncomment if you don't want to commit data) ---
+# data/doc.kml
+# data/*.kmz
+# data/*.geojson
+
+# --- Other Potential Exclusions ---
+# Logs
+*.log
+logs/
+
+# Secrets/Config (if not handled by environment variables)
+# secrets.yaml
+# .envrc
+
+# Build artifacts
+dist/
+build/
+*.egg-info/
