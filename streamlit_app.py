@@ -172,7 +172,7 @@ def fetch_and_process_news(_news_sources_config: List[Dict]):
 # --- Streamlit App Layout ---
 
 st.set_page_config(page_title="Singapore News Map", layout="wide")
-st.title("🇸🇬 Singapore News Map")
+st.title("🇸🇬 News Map")
 st.write("Recent news articles clustered by location, overlaid on 2020 Electoral Boundaries.")
 
 # --- Load Data ---
