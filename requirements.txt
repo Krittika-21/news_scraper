@@ -1,0 +1,29 @@
+# Core web framework
+flask
+
+# For handling Cross-Origin Resource Sharing (if deploying frontend/backend separately)
+# Remove if serving frontend directly from Flask and not needed.
+flask-cors
+
+# For making HTTP requests (used in scraper)
+requests
+
+# For parsing HTML (used in scraper for HTML sources)
+beautifulsoup4
+
+# For parsing RSS feeds (used in scraper for RSS sources)
+feedparser
+
+# Efficient XML/HTML parser (used by feedparser cleanup and potentially bs4)
+lxml
+
+# For geocoding location names to coordinates
+geopy
+
+# For handling geospatial data (reading KML/GeoJSON, point-in-polygon)
+geopandas
+# Shapely is a core dependency of geopandas, often installed automatically
+# shapely
+
+# Production WSGI server (recommended for deployment instead of Flask dev server)
+gunicorn
