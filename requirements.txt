@@ -27,3 +27,7 @@ geopandas
 
 # Production WSGI server (recommended for deployment instead of Flask dev server)
 gunicorn
+
+streamlit
+streamlit-folium
+folium
